@@ -438,6 +438,28 @@ With that setup, the app calls gateway routes such as
 dashboard routes such as
 `https://your-hermes-host.example.com/dashboard/api/model/info`.
 
+### Proxy auth headers (Cloudflare Access, Pangolin)
+
+If an authenticating reverse proxy sits in front of Hermes, it rejects requests
+that lack its credentials before they reach the gateway. Expand **Custom proxy
+and dashboard details** and use **Proxy auth headers** to add them. The headers
+are sent with every request to that connection, including the chat stream, the
+dashboard and the WebSocket connection.
+
+| Preset | Headers (enter the values) |
+| --- | --- |
+| Cloudflare Access (service token) | `CF-Access-Client-Id`, `CF-Access-Client-Secret` |
+| Pangolin (access token) | `P-Access-Token-Id`, `P-Access-Token` |
+| Custom | any header names you need |
+
+Notes:
+
+- Values are stored in the Android secure store, like the API key, and are
+  included in encrypted configuration backups.
+- The gateway's own `Authorization: Bearer` header always takes precedence, so
+  a proxy header named `Authorization` is ignored.
+- Selecting a preset only fills in the names; you still paste the values.
+
 ### Security notes
 
 - Prefer Tailscale/VPN for remote use.

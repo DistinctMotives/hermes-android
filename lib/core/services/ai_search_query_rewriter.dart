@@ -18,11 +18,10 @@ class AiSearchQueryRewriter {
     required String baseUrl,
     required String apiKey,
     String pathPrefix = '',
-    Map<String, String> extraHeaders = const {},
+    this._extraHeaders = const {},
     http.Client? httpClient,
   }) : _baseUrl = _joinBaseUrl(baseUrl, pathPrefix),
        _apiKey = apiKey.trim(),
-       _extraHeaders = extraHeaders,
        _http = httpClient ?? http.Client();
 
   Future<String> rewrite({

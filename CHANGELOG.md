@@ -4,6 +4,16 @@ All notable changes to this project are documented here. This project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Release notes for
 versions prior to 1.0.7 are in the **What's new** sections of the [README](README.md).
 
+## [Unreleased]
+
+### Added
+
+- Per-connection proxy auth headers for servers behind Cloudflare Access
+  (`CF-Access-Client-Id` / `CF-Access-Client-Secret`) or Pangolin
+  (`P-Access-Token-Id` / `P-Access-Token`), with a custom option for other
+  proxies. Sent on REST, chat streaming, dashboard login and the WebSocket
+  upgrade; stored in the secure store and included in encrypted backups.
+
 ## [2.1.10] - 2026-10-02
 
 ### Fixed
