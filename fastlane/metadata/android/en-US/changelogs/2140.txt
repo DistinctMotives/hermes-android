@@ -1,0 +1,9 @@
+- New Workspace home with Projects, Chats and Activity panes, plus a More destination for Cron, Skills, Memory and Settings
+- Server-backed session search: on-device, full-text (FTS5) and AI-assisted modes
+- Server Projects support: tree overview, per-project chats, Spaces migration, chat moves, per-project search, safe deletion
+- Chats browser with filters (All/Recent/Unassigned/Archived), date grouping and status labels
+- Encrypted configuration backup and restore (PBKDF2 + AES-256-GCM)
+- Quick chat entry from app shortcut and Android share intents, with a 72-hour archive policy
+- Gateway capability discovery so older servers keep working in compatibility mode
+- Chat UI improvements: sticky context header, role labels, code blocks with copy, full tool output
+- Network resilience: fresh TCP per request with a 20 s timeout; runtime notification permission request on Android 13+

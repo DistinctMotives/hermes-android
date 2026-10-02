@@ -1,0 +1,286 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build and verify APK
+    runs-on: ubuntu-latest
+    env:
+      HAS_RELEASE_KEYSTORE: ${{ secrets.KEYSTORE_BASE64 != '' }}
+      # Pin the production signer so a valid but wrong keystore cannot silently
+      # break in-place upgrades. This is the certificate used for v2.1.0+.
+      EXPECTED_RELEASE_CERT_SHA256: '475baf431b16d050c8f658ac838783b273f7c10bba06ed1d16bb0a4239f592fb'
+      # F-Droid ABI split: the Gradle versionCodeOverride derives per-ABI codes
+      # as base * 10 + ABI code (arm64-v8a = 2). The pubspec value is the base.
+      ARM64_ABI_CODE: '2'
+      # Fixed workspace-relative pub cache so builds are reproducible against
+      # the F-Droid build server, which builds at this same absolute path.
+      PUB_CACHE: ${{ github.workspace }}/.pub-cache
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.0'
+          channel: 'stable'
+
+      - name: Cache Flutter dependencies
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/.pub-cache
+          key: flutter-${{ runner.os }}-${{ hashFiles('pubspec.lock') }}
+          restore-keys: flutter-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Make jni native build reproducible (deterministic build-id)
+        run: |
+          # GNU build-ids hash machine-local DWARF; drop them so the F-Droid
+          # rebuild of libdartjni.so is bit-identical.
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          p = Path(os.environ["PUB_CACHE"]) / "hosted/pub.dev/jni-1.0.0/src/CMakeLists.txt"
+          t = p.read_text()
+          append = '\nif (ANDROID)\n\ttarget_link_options(jni PRIVATE "-Wl,--build-id=none")\nendif()\n'
+          if '--build-id=none' not in t:
+              p.write_text(t + append)
+          print('patched', p)
+          PY
+
+      - name: Verify release identity and upgrade versionCode
+        env:
+          MINIMUM_INSTALLED_VERSION_CODE: '2127'
+          REQUIRED_BASE_VERSION_CODE: '2150'
+        run: |
+          python3 - <<'PY'
+          import os
+          import pathlib
+          import re
+
+          match = re.search(
+              r"^version:\s*([^\s+]+)\+(\d+)\s*$",
+              pathlib.Path("pubspec.yaml").read_text(),
+              re.M,
+          )
+          if not match:
+              raise SystemExit("pubspec.yaml must declare versionName+versionCode")
+
+          version_name, version_code_text = match.groups()
+          version_code = int(version_code_text)
+          minimum = int(os.environ["MINIMUM_INSTALLED_VERSION_CODE"])
+          required_base = int(os.environ["REQUIRED_BASE_VERSION_CODE"])
+          arm64_code = int(os.environ["ARM64_ABI_CODE"])
+          if version_code <= minimum:
+              raise SystemExit(
+                  f"versionCode {version_code} must be greater than {minimum}"
+              )
+          if version_code != required_base:
+              raise SystemExit(
+                  f"versionCode {version_code} does not match required base "
+                  f"{required_base}"
+              )
+
+          if os.environ.get("GITHUB_REF_TYPE") == "tag":
+              expected_tag = f"v{version_name}"
+              actual_tag = os.environ.get("GITHUB_REF_NAME")
+              if actual_tag != expected_tag:
+                  raise SystemExit(
+                      f"Release tag {actual_tag} does not match {expected_tag}"
+                  )
+
+          print(
+              f"Verified base {version_name}+{version_code}; "
+              f"arm64 split effective versionCode is "
+              f"{version_code * 10 + arm64_code}; upgrade floor is {minimum}; "
+              f"required base is {required_base}"
+          )
+          PY
+
+      - name: Refuse an unsigned tagged release
+        if: startsWith(github.ref, 'refs/tags/v') && env.HAS_RELEASE_KEYSTORE != 'true'
+        run: |
+          echo "A tagged release requires the authorized release keystore."
+          exit 1
+
+      - name: Set up release keystore
+        if: env.HAS_RELEASE_KEYSTORE == 'true'
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+        run: |
+          echo "$KEYSTORE_BASE64" | base64 -d > release.keystore
+          echo "storePassword=$STORE_PASSWORD" > key.properties
+          echo "keyPassword=$KEY_PASSWORD" >> key.properties
+          echo "keyAlias=$KEY_ALIAS" >> key.properties
+          echo "storeFile=${{ github.workspace }}/release.keystore" >> key.properties
+
+      - name: Static analysis
+        run: flutter analyze --no-pub --fatal-infos
+
+      - name: Run tests
+        run: flutter test --no-pub
+
+      - name: Build APK (signed release)
+        if: env.HAS_RELEASE_KEYSTORE == 'true'
+        run: flutter build apk --release --split-per-abi --split-debug-info=symbols
+
+      - name: Build APK (debug validation artifact only)
+        if: env.HAS_RELEASE_KEYSTORE != 'true'
+        run: flutter build apk --debug --split-per-abi
+
+      - name: Verify arm64 split APK effective versionCode
+        run: |
+          python3 - <<'PY'
+          import glob
+          import os
+          import pathlib
+          import re
+          import subprocess
+
+          version_match = re.search(
+              r"^version:\s*([^\s+]+)\+(\d+)\s*$",
+              pathlib.Path("pubspec.yaml").read_text(),
+              re.M,
+          )
+          if not version_match:
+              raise SystemExit("pubspec.yaml must declare versionName+versionCode")
+
+          apk_paths = glob.glob(
+              "build/app/outputs/flutter-apk/app-arm64-v8a-*.apk"
+          )
+          if len(apk_paths) != 1:
+              raise SystemExit(f"Expected one arm64 split APK, found {apk_paths}")
+
+          sdk_root = os.environ.get("ANDROID_SDK_ROOT") or os.environ["ANDROID_HOME"]
+          aapt_paths = sorted(pathlib.Path(sdk_root).glob("build-tools/*/aapt"))
+          if not aapt_paths:
+              raise SystemExit("Android aapt was not found")
+          badging = subprocess.check_output(
+              [str(aapt_paths[-1]), "dump", "badging", apk_paths[0]],
+              text=True,
+          )
+          packaged_match = re.search(r"versionCode='(\d+)'", badging)
+          if not packaged_match:
+              raise SystemExit("arm64 APK versionCode was not readable")
+
+          base_code = int(version_match.group(2))
+          abi_code = int(os.environ["ARM64_ABI_CODE"])
+          packaged_code = int(packaged_match.group(1))
+          expected_code = base_code * 10 + abi_code
+          if packaged_code != expected_code:
+              raise SystemExit(
+                  f"arm64 packaged versionCode {packaged_code} != "
+                  f"base {base_code} * 10 + ABI code {abi_code}"
+              )
+          print(
+              f"Verified arm64 packaged versionCode {packaged_code} "
+              f"from base {base_code} * 10 + ABI code {abi_code}"
+          )
+          PY
+
+      - name: Verify release APKs are signed
+        if: env.HAS_RELEASE_KEYSTORE == 'true'
+        run: |
+          python3 - <<'PY'
+          import glob
+          import os
+          import pathlib
+          import re
+          import subprocess
+
+          apk_paths = sorted(glob.glob(
+              "build/app/outputs/flutter-apk/app-*-release.apk"
+          ))
+          if not apk_paths:
+              raise SystemExit("No release APKs were produced")
+
+          sdk_root = os.environ.get("ANDROID_SDK_ROOT") or os.environ["ANDROID_HOME"]
+          apksigner_paths = sorted(
+              pathlib.Path(sdk_root).glob("build-tools/*/apksigner")
+          )
+          if not apksigner_paths:
+              raise SystemExit("Android apksigner was not found")
+          apksigner = str(apksigner_paths[-1])
+          expected_cert = os.environ["EXPECTED_RELEASE_CERT_SHA256"].lower()
+
+          for apk_path in apk_paths:
+              verified = subprocess.run(
+                  [apksigner, "verify", "--print-certs", apk_path],
+                  text=True,
+                  stdout=subprocess.PIPE,
+                  stderr=subprocess.STDOUT,
+              )
+              print(f"--- {apk_path} ---")
+              print(verified.stdout.strip())
+              if verified.returncode != 0:
+                  raise SystemExit(
+                      f"Release APK {apk_path} is not signed: "
+                      "apksigner verify failed"
+                  )
+              if "certificate DN" not in verified.stdout:
+                  raise SystemExit(
+                      f"Release APK {apk_path} carries no signing certificates"
+                  )
+              certs = {
+                  match.group(1).lower()
+                  for match in re.finditer(
+                      r"certificate SHA-256 digest:\s*([0-9a-fA-F]+)",
+                      verified.stdout,
+                  )
+              }
+              if certs != {expected_cert}:
+                  found = ", ".join(sorted(certs)) or "none"
+                  raise SystemExit(
+                      f"Release APK {apk_path} signer mismatch: "
+                      f"expected {expected_cert}, found {found}"
+                  )
+          print(f"Verified {len(apk_paths)} signed release APK(s)")
+          PY
+
+      - name: Upload signed release APKs
+        if: env.HAS_RELEASE_KEYSTORE == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: signed-release-apks
+          path: build/app/outputs/flutter-apk/app-*-release.apk
+          retention-days: 30
+
+      - name: Upload debug validation APKs
+        if: env.HAS_RELEASE_KEYSTORE != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug-validation-apks
+          path: build/app/outputs/flutter-apk/app-*-debug.apk
+          retention-days: 30
+
+      - name: Create Release
+        if: startsWith(github.ref, 'refs/tags/v') && env.HAS_RELEASE_KEYSTORE == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ github.ref_name }}" \
+            --title "Hermes Android ${{ github.ref_name }}" \
+            --generate-notes \
+            build/app/outputs/flutter-apk/app-*-release.apk || \
+          gh release upload "${{ github.ref_name }}" \
+            build/app/outputs/flutter-apk/app-*-release.apk --clobber

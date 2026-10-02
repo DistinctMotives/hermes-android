@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="new_quick_chat"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/shortcut_quick_chat_short"
+        android:shortcutLongLabel="@string/shortcut_quick_chat_long">
+        <intent android:action="com.hermesagent.hermes_android.action.QUICK_CHAT" />
+        <categories android:name="android.shortcut.conversation" />
+    </shortcut>
+</shortcuts>

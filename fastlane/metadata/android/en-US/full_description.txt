@@ -1,0 +1,16 @@
+Hermes Android connects to a Hermes Agent Gateway API Server over LAN, Wi-Fi, or a private Tailscale network. It provides a full chat experience with streaming responses, session browsing, per-chat model selection, voice dictation, and multi-attachment uploads.
+
+Features:
+• Unified Desktop Gateway JSON-RPC transport (same as Hermes Desktop)
+• Streaming responses with real-time tool progress cards
+• Per-chat model and thinking-effort selection
+• Up to 10 attachments per message (images and files, 16 MiB each)
+• Voice dictation with optional text-to-speech replies
+• Session search, rename, branch, and delete
+• Copy/Select, Read Aloud, Edit+Resend, Regenerate, Stop, Export
+• Memory, Cron Jobs, Skills, and Settings via the dashboard API
+• Background turn notifications (v2.0.1+)
+• Durable turn recovery across Android process-kill lifecycle events
+• Dark / light / system theme with gold Hermes branding
+
+Requires a running Hermes Agent gateway accessible from the device. No cloud account or subscription — you own the server.

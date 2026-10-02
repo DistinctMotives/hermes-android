@@ -1,0 +1,3 @@
+- Background turn notifications fire when a Desktop Gateway turn completes while the app is backgrounded
+- Scroll-position bug from upstream PR #71 fully resolved via ChatScrollCoordinator one-shot alignment
+- Cinzel font bundled locally (OFL) instead of downloading from Google Fonts at runtime

@@ -1,0 +1,80 @@
+From 4385a0ead08d1c40087804d689998acd9191fd7a Mon Sep 17 00:00:00 2001
+From: Hermes Agent <agent@hermes-agent.local>
+Date: Fri, 29 May 2026 08:50:46 +1000
+Subject: [PATCH] perf: set TCP_NODELAY on SSE response sockets for real-time
+ streaming
+
+Disable Nagle's algorithm on SSE response transport sockets so that
+small writes (tool progress events, text deltas) reach clients
+immediately instead of being coalesced into larger TCP segments.
+
+Without this, mobile clients see all tool cards and text arrive as one
+burst at stream end rather than streaming in real-time.
+---
+ gateway/platforms/api_server.py | 22 ++++++++++++++++++++++
+ 1 file changed, 22 insertions(+)
+
+diff --git a/gateway/platforms/api_server.py b/gateway/platforms/api_server.py
+index a56be5573..928b06451 100644
+--- a/gateway/platforms/api_server.py
++++ b/gateway/platforms/api_server.py
+@@ -61,6 +61,24 @@ from gateway.platforms.base import (
+ 
+ logger = logging.getLogger(__name__)
+ 
++# ── SSE flush: disable Nagle on SSE response sockets so small writes
++#    (tool progress events, text deltas) reach clients immediately instead
++#    of being coalesced into larger TCP segments.  Without this, mobile
++#    clients see all tool cards and text arrive as one burst at stream end.
++def _sse_disable_nagle(response):
++    """Set TCP_NODELAY on the transport socket underlying an SSE response."""
++    try:
++        transport = getattr(response, '_req', None)
++        if transport is not None:
++            transport = getattr(transport, 'transport', None)
++        if transport is not None:
++            sock = transport.get_extra_info('socket')
++            if sock is not None:
++                sock.setsockopt(_socket.IPPROTO_TCP, _socket.TCP_NODELAY, 1)
++    except Exception:
++        pass
++
++
+ # Default settings
+ DEFAULT_HOST = "127.0.0.1"
+ DEFAULT_PORT = 8642
+@@ -1644,6 +1662,7 @@ class APIServerAdapter(BasePlatformAdapter):
+             headers["X-Hermes-Session-Key"] = gateway_session_key
+         response = web.StreamResponse(status=200, headers=headers)
+         await response.prepare(request)
++        _sse_disable_nagle(response)
+         last_write = time.monotonic()
+         try:
+             while True:
+@@ -2017,6 +2036,7 @@ class APIServerAdapter(BasePlatformAdapter):
+             sse_headers["X-Hermes-Session-Key"] = gateway_session_key
+         response = web.StreamResponse(status=200, headers=sse_headers)
+         await response.prepare(request)
++        _sse_disable_nagle(response)
+ 
+         try:
+             last_activity = time.monotonic()
+@@ -2201,6 +2221,7 @@ class APIServerAdapter(BasePlatformAdapter):
+             sse_headers["X-Hermes-Session-Key"] = gateway_session_key
+         response = web.StreamResponse(status=200, headers=sse_headers)
+         await response.prepare(request)
++        _sse_disable_nagle(response)
+ 
+         # State accumulated during the stream
+         final_text_parts: List[str] = []
+@@ -3849,6 +3870,7 @@ class APIServerAdapter(BasePlatformAdapter):
+             },
+         )
+         await response.prepare(request)
++        _sse_disable_nagle(response)
+ 
+         try:
+             while True:
+-- 
+2.39.5 (Apple Git-154)
+
