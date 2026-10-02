@@ -12,14 +12,17 @@ class AiSearchQueryRewriter {
   final http.Client _http;
   final String _baseUrl;
   final String _apiKey;
+  final Map<String, String> _extraHeaders;
 
   AiSearchQueryRewriter({
     required String baseUrl,
     required String apiKey,
     String pathPrefix = '',
+    Map<String, String> extraHeaders = const {},
     http.Client? httpClient,
   }) : _baseUrl = _joinBaseUrl(baseUrl, pathPrefix),
        _apiKey = apiKey.trim(),
+       _extraHeaders = extraHeaders,
        _http = httpClient ?? http.Client();
 
   Future<String> rewrite({
@@ -41,6 +44,7 @@ class AiSearchQueryRewriter {
           .post(
             Uri.parse('$_baseUrl/v1/search/rewrite'),
             headers: {
+              ..._extraHeaders,
               'Authorization': 'Bearer $_apiKey',
               'Content-Type': 'application/json',
             },

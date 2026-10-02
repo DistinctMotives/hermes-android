@@ -47,6 +47,7 @@ class _CronScreenState extends State<CronScreen> {
       useHttps: widget.connection.useHttps,
       username: widget.connection.dashboardUsername,
       password: widget.connection.dashboardPassword,
+      extraHeaders: widget.connection.extraHeaders,
       gatewayProfile: widget.connection.gatewayProfile,
     );
     _loadJobs();

@@ -111,6 +111,7 @@ class ConfigBackup {
       'dashboard_username': connection.dashboardUsername,
       'dashboard_password': connection.dashboardPassword,
       'gateway_profile': connection.gatewayProfile,
+      'extra_headers': connection.extraHeaders,
     };
   }
 
@@ -135,6 +136,8 @@ class ConfigBackup {
       dashboardUsername: nonEmpty(map['dashboard_username']),
       dashboardPassword: nonEmpty(map['dashboard_password']),
       gatewayProfile: nonEmpty(map['gateway_profile']),
+      // Absent in backups made before proxy headers existed.
+      extraHeaders: SavedConnection.headersFromJson(map['extra_headers']),
     );
   }
 

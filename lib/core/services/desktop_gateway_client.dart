@@ -175,6 +175,7 @@ class DesktopGatewayClient {
         proxied: connection.dashboardProxied,
         username: connection.dashboardUsername,
         password: connection.dashboardPassword,
+        extraHeaders: connection.extraHeaders,
       ),
       gatewayProfile: connection.gatewayProfile,
     );
@@ -281,7 +282,12 @@ class DesktopGatewayClient {
     _capabilities.reset();
     final ticket = await _dashboard.mintWebSocketTicket();
     if (_closed) throw StateError('DesktopGatewayClient is closed.');
-    final client = WsClient(_baseUrl, ticket: ticket, profile: _gatewayProfile);
+    final client = WsClient(
+      _baseUrl,
+      ticket: ticket,
+      profile: _gatewayProfile,
+      extraHeaders: _dashboard.webSocketHeaders,
+    );
     _installAsyncEventBridge(client);
     final inheritedConnectionListener = client.onConnectionChanged;
     client.onConnectionChanged = (connected) {
@@ -589,6 +595,7 @@ class DesktopGatewayClient {
                 _baseUrl,
                 ticket: ticket,
                 profile: _gatewayProfile,
+                extraHeaders: _dashboard.webSocketHeaders,
               );
               _installAsyncEventBridge(client);
               return client;

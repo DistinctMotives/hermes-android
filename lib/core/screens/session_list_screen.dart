@@ -186,6 +186,7 @@ class _SessionListScreenState extends State<SessionListScreen> {
       baseUrl: widget.connection.baseUrl,
       apiKey: widget.connection.apiKey,
       pathPrefix: widget.connection.gatewayPrefix ?? '',
+      extraHeaders: widget.connection.extraHeaders,
       httpClient: widget.testHttpClient,
     );
     if (widget.connection.desktopGatewayUrl?.trim().isNotEmpty == true) {
@@ -248,6 +249,7 @@ class _SessionListScreenState extends State<SessionListScreen> {
       useHttps: widget.connection.useHttps,
       username: widget.connection.dashboardUsername,
       password: widget.connection.dashboardPassword,
+      extraHeaders: widget.connection.extraHeaders,
     );
     final created = SessionSearchClient(
       baseUrl: dashboard.baseUrl,
@@ -314,6 +316,7 @@ class _SessionListScreenState extends State<SessionListScreen> {
     final created = AiSearchQueryRewriter(
       baseUrl: widget.connection.baseUrl,
       pathPrefix: widget.connection.gatewayPrefix ?? '',
+      extraHeaders: widget.connection.extraHeaders,
       apiKey: widget.connection.apiKey,
     );
     _aiRewriter = created;

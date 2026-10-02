@@ -487,6 +487,7 @@ class HomeScreenState extends State<HomeScreen> {
               dashboardUsername,
               dashboardPassword,
               gatewayProfile,
+              extraHeaders = const {},
             }) async {
               if (existing == null) {
                 await widget.connManager.saveConnection(
@@ -502,6 +503,7 @@ class HomeScreenState extends State<HomeScreen> {
                   dashboardUsername: dashboardUsername,
                   dashboardPassword: dashboardPassword,
                   gatewayProfile: gatewayProfile,
+                  extraHeaders: extraHeaders,
                 );
               } else {
                 await widget.connManager.updateConnection(
@@ -518,6 +520,7 @@ class HomeScreenState extends State<HomeScreen> {
                   dashboardUsername: dashboardUsername,
                   dashboardPassword: dashboardPassword,
                   gatewayProfile: gatewayProfile,
+                  extraHeaders: extraHeaders,
                 );
               }
               _refresh();
@@ -605,6 +608,7 @@ class HomeScreenState extends State<HomeScreen> {
                           baseUrl: baseUrl,
                           apiKey: key,
                           pathPrefix: conn.gatewayPrefix ?? '',
+                          extraHeaders: conn.extraHeaders,
                         );
                         final result = await client.checkHealth();
                         client.close();
@@ -813,6 +817,7 @@ class HomeScreenState extends State<HomeScreen> {
                           baseUrl: conn.baseUrl,
                           apiKey: conn.apiKey,
                           pathPrefix: gatewayPrefix,
+                          extraHeaders: conn.extraHeaders,
                         );
                         final result = await apiClient.checkHealth();
                         apiClient.close();
@@ -836,6 +841,7 @@ class HomeScreenState extends State<HomeScreen> {
                         proxied: proxied,
                         username: user.isEmpty ? null : user,
                         password: pass.isEmpty ? null : pass,
+                        extraHeaders: conn.extraHeaders,
                       );
                       try {
                         await client.getModelInfo();
@@ -1047,6 +1053,7 @@ class _AddDialog extends StatefulWidget {
     String? dashboardUsername,
     String? dashboardPassword,
     String? gatewayProfile,
+    Map<String, String> extraHeaders,
   })
   onSave;
   const _AddDialog({required this.onSave, this.initialConnection});
@@ -1069,6 +1076,8 @@ class _AddDialogState extends State<_AddDialog> {
   late final TextEditingController _gatewayProfile;
   late bool _showDashboard;
   late bool _dashboardProxied;
+  late String _headerPreset;
+  final List<_HeaderRow> _headerRows = [];
   bool _validating = false;
   String? _error;
 
@@ -1105,7 +1114,13 @@ class _AddDialogState extends State<_AddDialog> {
     );
     _gatewayProfile = TextEditingController(text: conn?.gatewayProfile ?? '');
     _dashboardProxied = conn?.dashboardProxied ?? false;
+    final existingHeaders = conn?.extraHeaders ?? const <String, String>{};
+    for (final entry in existingHeaders.entries) {
+      _headerRows.add(_HeaderRow(entry.key, entry.value));
+    }
+    _headerPreset = _ProxyHeaderPreset.detect(existingHeaders.keys);
     _showDashboard =
+        existingHeaders.isNotEmpty ||
         conn?.gatewayPrefix?.isNotEmpty == true ||
         conn?.gatewayProfile?.isNotEmpty == true ||
         conn?.dashboardPrefix?.isNotEmpty == true ||
@@ -1114,6 +1129,50 @@ class _AddDialogState extends State<_AddDialog> {
         conn?.dashboardPassword?.isNotEmpty == true ||
         _dashboardProxied ||
         conn?.desktopGatewayUrl?.isNotEmpty == true;
+  }
+
+  /// Switches the preset, keeping any values already typed (by position) so
+  /// flipping between presets does not discard a pasted secret.
+  void _applyHeaderPreset(String preset) {
+    final names = _ProxyHeaderPreset.names[preset];
+    setState(() {
+      _headerPreset = preset;
+      if (names == null) return; // Custom: leave the rows as they are.
+      final values = [for (final row in _headerRows) row.value.text];
+      for (final row in _headerRows) {
+        row.dispose();
+      }
+      _headerRows
+        ..clear()
+        ..addAll([
+          for (var i = 0; i < names.length; i++)
+            _HeaderRow(names[i], i < values.length ? values[i] : ''),
+        ]);
+    });
+  }
+
+  Map<String, String> _collectHeaders() => SavedConnection.cleanHeaders({
+    for (final row in _headerRows) row.name.text: row.value.text,
+  });
+
+  /// Returns an error message when a header could not be sent as typed.
+  String? _validateHeaders() {
+    final token = RegExp(r"^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$");
+    for (final row in _headerRows) {
+      final name = row.name.text.trim();
+      final value = row.value.text.trim();
+      if (name.isEmpty && value.isEmpty) continue;
+      if (name.isEmpty || value.isEmpty) {
+        return 'Each proxy header needs both a name and a value.';
+      }
+      if (!token.hasMatch(name)) {
+        return 'Invalid proxy header name: "$name".';
+      }
+      if (value.contains(RegExp(r'[\r\n]'))) {
+        return 'Proxy header values cannot contain line breaks.';
+      }
+    }
+    return null;
   }
 
   Future<void> _validateAndSave() async {
@@ -1127,6 +1186,16 @@ class _AddDialogState extends State<_AddDialog> {
     // A blank Port field means "not supplied": normalizeHostAndPort then infers
     // 8642 for HTTP and 443 for HTTPS.
     if (label.isEmpty || host.isEmpty || (port != null && port <= 0)) return;
+
+    final headerError = _validateHeaders();
+    if (headerError != null) {
+      setState(() {
+        _error = headerError;
+        _showDashboard = true;
+      });
+      return;
+    }
+    final extraHeaders = _collectHeaders();
 
     setState(() {
       _validating = true;
@@ -1147,6 +1216,7 @@ class _AddDialogState extends State<_AddDialog> {
         baseUrl: baseUrl,
         apiKey: apiKey,
         pathPrefix: gatewayPrefix,
+        extraHeaders: extraHeaders,
       );
       final result = await client.checkHealth();
       client.close();
@@ -1203,6 +1273,7 @@ class _AddDialogState extends State<_AddDialog> {
           proxied: _dashboardProxied,
           username: dashUser.isEmpty ? null : dashUser,
           password: dashPass.isEmpty ? null : dashPass,
+          extraHeaders: extraHeaders,
         );
         try {
           await dashClient.getModelInfo();
@@ -1235,6 +1306,7 @@ class _AddDialogState extends State<_AddDialog> {
         dashboardUsername: dashUser.isEmpty ? null : dashUser,
         dashboardPassword: dashPass.isEmpty ? null : dashPass,
         gatewayProfile: gatewayProfile.isEmpty ? null : gatewayProfile,
+        extraHeaders: extraHeaders,
       );
       if (mounted) Navigator.pop(context);
     } on CredentialStorageException {
@@ -1434,6 +1506,8 @@ class _AddDialogState extends State<_AddDialog> {
                 ),
                 autocorrect: false,
               ),
+              const SizedBox(height: 16),
+              _buildProxyHeadersSection(),
             ],
           ],
         ),
@@ -1460,8 +1534,91 @@ class _AddDialogState extends State<_AddDialog> {
     );
   }
 
+  Widget _buildProxyHeadersSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Proxy auth headers',
+          style: Theme.of(context).textTheme.titleSmall,
+        ),
+        Padding(
+          padding: const EdgeInsets.only(top: 4, bottom: 8),
+          child: Text(
+            'Sent with every request, including the WebSocket, for servers '
+            'behind Cloudflare Access or Pangolin.',
+            style: TextStyle(color: Colors.grey[600], fontSize: 12),
+          ),
+        ),
+        DropdownButtonFormField<String>(
+          initialValue: _headerPreset,
+          decoration: const InputDecoration(labelText: 'Preset'),
+          items: [
+            for (final preset in _ProxyHeaderPreset.all)
+              DropdownMenuItem(value: preset, child: Text(preset)),
+          ],
+          onChanged: _validating
+              ? null
+              : (preset) {
+                  if (preset != null) _applyHeaderPreset(preset);
+                },
+        ),
+        for (var i = 0; i < _headerRows.length; i++) ...[
+          const SizedBox(height: 12),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _headerRows[i].name,
+                  decoration: const InputDecoration(labelText: 'Header name'),
+                  autocorrect: false,
+                  enableSuggestions: false,
+                  enabled: !_validating,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: TextField(
+                  controller: _headerRows[i].value,
+                  decoration: const InputDecoration(labelText: 'Value'),
+                  obscureText: true,
+                  autocorrect: false,
+                  enableSuggestions: false,
+                  enabled: !_validating,
+                ),
+              ),
+              if (_headerPreset == _ProxyHeaderPreset.custom)
+                IconButton(
+                  tooltip: 'Remove header',
+                  icon: const Icon(Icons.close),
+                  onPressed: _validating
+                      ? null
+                      : () => setState(() => _headerRows.removeAt(i).dispose()),
+                ),
+            ],
+          ),
+        ],
+        if (_headerPreset == _ProxyHeaderPreset.custom)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: _validating
+                  ? null
+                  : () => setState(() => _headerRows.add(_HeaderRow('', ''))),
+              icon: const Icon(Icons.add),
+              label: const Text('Add header'),
+            ),
+          ),
+      ],
+    );
+  }
+
   @override
   void dispose() {
+    for (final row in _headerRows) {
+      row.dispose();
+    }
     _label.dispose();
     _host.dispose();
     _port.dispose();
@@ -1474,5 +1631,53 @@ class _AddDialogState extends State<_AddDialog> {
     _desktopGatewayUrl.dispose();
     _gatewayProfile.dispose();
     super.dispose();
+  }
+}
+
+/// One editable proxy-header name/value pair in the connection form.
+class _HeaderRow {
+  final TextEditingController name;
+  final TextEditingController value;
+
+  _HeaderRow(String name, String value)
+    : name = TextEditingController(text: name),
+      value = TextEditingController(text: value);
+
+  void dispose() {
+    name.dispose();
+    value.dispose();
+  }
+}
+
+/// Header-name presets for authenticating reverse proxies. Selecting one only
+/// pre-fills the names; the values are still entered by the user.
+abstract final class _ProxyHeaderPreset {
+  static const none = 'None';
+  static const cloudflare = 'Cloudflare Access';
+  static const pangolin = 'Pangolin';
+  static const custom = 'Custom';
+
+  static const all = [none, cloudflare, pangolin, custom];
+
+  static const names = <String, List<String>>{
+    none: [],
+    cloudflare: ['CF-Access-Client-Id', 'CF-Access-Client-Secret'],
+    pangolin: ['P-Access-Token-Id', 'P-Access-Token'],
+  };
+
+  /// Picks the preset matching saved header names, falling back to custom for
+  /// anything else.
+  static String detect(Iterable<String> headerNames) {
+    final lower = headerNames.map((n) => n.toLowerCase()).toSet();
+    if (lower.isEmpty) return none;
+    for (final entry in names.entries) {
+      final expected = entry.value.map((n) => n.toLowerCase()).toSet();
+      if (expected.isNotEmpty &&
+          expected.length == lower.length &&
+          expected.containsAll(lower)) {
+        return entry.key;
+      }
+    }
+    return custom;
   }
 }

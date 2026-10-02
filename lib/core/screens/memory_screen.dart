@@ -35,6 +35,7 @@ class _MemoryScreenState extends State<MemoryScreen> {
       useHttps: widget.connection.useHttps,
       username: widget.connection.dashboardUsername,
       password: widget.connection.dashboardPassword,
+      extraHeaders: widget.connection.extraHeaders,
     );
     _loadMemory();
   }

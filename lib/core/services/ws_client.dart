@@ -229,6 +229,7 @@ class WsClient {
   final String? _token;
   final String? _ticket;
   final String? _profile;
+  final Map<String, String> _extraHeaders;
   IOWebSocketChannel? _channel;
   bool _connected = false;
   int _nextId = 1;
@@ -264,6 +265,7 @@ class WsClient {
     String? token,
     String? ticket,
     String? profile,
+    Map<String, String> extraHeaders = const {},
     Duration heartbeatInterval = defaultHeartbeatInterval,
     Duration heartbeatDeadline = defaultHeartbeatDeadline,
   }) {
@@ -272,6 +274,7 @@ class WsClient {
       token,
       ticket,
       profile,
+      extraHeaders,
       heartbeatInterval,
       heartbeatDeadline,
     );
@@ -282,6 +285,7 @@ class WsClient {
     this._token,
     this._ticket,
     this._profile,
+    this._extraHeaders,
     this.heartbeatInterval,
     this.heartbeatDeadline,
   );
@@ -315,7 +319,10 @@ class WsClient {
     // Observe that error future immediately; the waiter still receives it.
     readyCompleter.future.ignore();
     final wsUrl = buildWebSocketUrl(baseUrl, token: _token, ticket: _ticket);
-    final channel = IOWebSocketChannel.connect(Uri.parse(wsUrl));
+    final channel = IOWebSocketChannel.connect(
+      Uri.parse(wsUrl),
+      headers: _extraHeaders.isEmpty ? null : _extraHeaders,
+    );
     _channel = channel;
     channel.stream.listen(
       (message) => _handleMessage(message, generation),

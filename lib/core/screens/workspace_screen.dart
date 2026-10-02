@@ -281,6 +281,7 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
       baseUrl: connection.baseUrl,
       apiKey: connection.apiKey,
       pathPrefix: connection.gatewayPrefix ?? '',
+      extraHeaders: connection.extraHeaders,
       httpClient: widget.testSessionsHttpClient,
     );
     // Page through the whole visible list. The gateway serves newest-first
@@ -1168,6 +1169,7 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
           proxied: widget.connection.dashboardProxied,
           username: widget.connection.dashboardUsername,
           password: widget.connection.dashboardPassword,
+          extraHeaders: widget.connection.extraHeaders,
         );
         archivedSessions = await dashboard
             .getArchivedSessions(

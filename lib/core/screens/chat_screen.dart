@@ -384,6 +384,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           baseUrl: widget.connection.baseUrl,
           apiKey: widget.connection.apiKey,
           pathPrefix: widget.connection.gatewayPrefix ?? '',
+          extraHeaders: widget.connection.extraHeaders,
         );
     _gateway = GatewayChatClient(_client);
     _attachmentDraftService =
@@ -1838,6 +1839,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     useHttps: widget.connection.useHttps,
     username: widget.connection.dashboardUsername,
     password: widget.connection.dashboardPassword,
+    extraHeaders: widget.connection.extraHeaders,
   );
 
   Future<void> _showModelSelector() async {

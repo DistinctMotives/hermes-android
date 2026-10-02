@@ -50,6 +50,15 @@ class SavedConnection {
   /// where the server already knows its profile.
   final String? gatewayProfile;
 
+  /// Extra HTTP headers sent with every request to this connection, including
+  /// the WebSocket upgrade. Used to pass an authenticating reverse proxy such
+  /// as Cloudflare Access (`CF-Access-Client-Id` / `CF-Access-Client-Secret`)
+  /// or Pangolin (`P-Access-Token-Id` / `P-Access-Token`).
+  ///
+  /// Values are secrets: they never cross [toMap] and are persisted in the
+  /// platform secure store alongside [apiKey].
+  final Map<String, String> extraHeaders;
+
   SavedConnection({
     required this.id,
     required this.label,
@@ -65,7 +74,8 @@ class SavedConnection {
     this.dashboardUsername,
     this.dashboardPassword,
     this.gatewayProfile,
-  });
+    Map<String, String> extraHeaders = const {},
+  }) : extraHeaders = Map.unmodifiable(extraHeaders);
 
   String get baseUrl {
     final scheme = useHttps ? 'https' : 'http';
@@ -136,6 +146,18 @@ class SavedConnection {
     );
   }
 
+  /// Normalises user-entered proxy headers: trims names and values and drops
+  /// entries where either is blank.
+  static Map<String, String> cleanHeaders(Map<String, String> raw) {
+    final out = <String, String>{};
+    raw.forEach((name, value) {
+      final n = name.trim();
+      final v = value.trim();
+      if (n.isNotEmpty && v.isNotEmpty) out[n] = v;
+    });
+    return out;
+  }
+
   /// Serializes non-secret connection metadata for SharedPreferences.
   ///
   /// [apiKey] and [dashboardPassword] intentionally never cross this boundary;
@@ -196,6 +218,17 @@ class SavedConnection {
     );
   }
 
+  /// Parses a decoded JSON object of header name/value strings, ignoring
+  /// anything that is not a string pair, then normalises it via [cleanHeaders].
+  static Map<String, String> headersFromJson(Object? raw) {
+    if (raw is! Map) return const {};
+    return cleanHeaders({
+      for (final e in raw.entries)
+        if (e.key is String && e.value is String)
+          e.key as String: e.value as String,
+    });
+  }
+
   /// Returns a copy with the given fields replaced. Pass `clearDashboard*`
   /// flags to explicitly null out optional fields (since null args can't
   /// distinguish "leave unchanged" from "clear").
@@ -213,6 +246,7 @@ class SavedConnection {
     String? dashboardUsername,
     String? dashboardPassword,
     String? gatewayProfile,
+    Map<String, String>? extraHeaders,
     bool clearGatewayPrefix = false,
     bool clearDashboardPrefix = false,
     bool clearDashboardPort = false,
@@ -250,6 +284,7 @@ class SavedConnection {
       gatewayProfile: clearGatewayProfile
           ? null
           : (gatewayProfile ?? this.gatewayProfile),
+      extraHeaders: extraHeaders ?? this.extraHeaders,
     );
   }
 }
